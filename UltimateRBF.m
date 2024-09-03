@@ -1,0 +1,170 @@
+% RBF Function Interpolation 1D
+% Vishnu Vardhan Reddy Kancharla
+
+% GIVENS
+format compact; format long; clear all; clc; close all; %#ok<CLALL>
+
+s = 2;                        % Num of Dimensions 
+N = 500;                      % Number of data sites given OR roughly how many data sites you want
+M = 100;             % Num of eval points on each axis (dimension)
+
+% DOMAIN MODIFICATION
+do = input('Do you want the domain to be modified? (y/n)','s');
+if do == 'y'
+    
+gridpoints = MakeSDGrid(s,M); % Equally spaced gridpoints
+
+if s == 3
+[epoints, ~,~,~,numIn,type,hollow] = maskDomain(gridpoints,s); % Eval Pts after Domain Mod of grid pts
+end 
+
+if s == 2
+[epoints, index,xb,yb,numIn,type,hollow] = maskDomain(gridpoints,s); % Eval Pts after Domain Mod of grid pts
+end 
+
+
+%Calling the points function to pick the point picking scheme
+%{    
+    dsites = points(round(N^(1/s)),s);
+    [dsites, ~] = maskDomain(dsites,s);
+    ctrs   = dsites;
+    N = length(ctrs); %Recalculating number of data sites
+%}    
+
+
+%Randomly picked points
+%{    
+    evalNum = length(epoints);
+    P = randperm(evalNum,N); % Generating N Random index Numbers from 1 to evalNum 
+    dsites = epoints(P,:);   % Choosing Random dsites from domain modified epoints
+    ctrs = dsites;           % Setting ctrs = dsites
+ %}   
+
+
+%Picking points equally along the evaluation points vector-not recommended
+%{ 
+evalNum = length(epoints);
+P = zeros(N,1);
+everyNth = floor(evalNum/N);
+
+for i = 1:N
+P(i) = i*everyNth;
+end
+
+dsites = epoints(P,:);
+ctrs = dsites;
+%}
+
+%Picking points equally spaced - recommended
+
+if hollow
+    
+    dsites = maskDomain(zeros(N,3),s,type);
+    ctrs = dsites;
+    
+end 
+
+if ~hollow
+ratio = numIn/M^s;
+evalNum = length(epoints);
+
+%Adding random points to get to N
+%{
+dsites = maskDomain(MakeSDGrid(s,floor((N/ratio)^(1/s))),s);
+stillNeed = N - length(dsites);
+
+
+if stillNeed > 0
+    P = randperm(evalNum,stillNeed);
+    dsites = [dsites; epoints(P,:)];
+end
+%}
+
+%Removing random points to get to N
+
+dsites = maskDomain(MakeSDGrid(s,ceil((N/ratio)^(1/s))),s,type);
+tooMany = length(dsites) - N;
+
+if tooMany > 0
+    
+        P = randperm(length(dsites),tooMany);
+        dsites(P,:) = [];
+end
+
+if tooMany < 0
+    P = randperm(evalNum,abs(tooMany));
+    dsites = [dsites; epoints(P,:)];
+end
+ctrs = dsites;
+
+end
+
+
+elseif do == 'n'
+    
+    epoints = MakeSDGrid(s,M);    % Equally spaced evaluation points
+    
+    dsites = points(round(N^(1/s)),s);       % GIVEN data points obtained using 'points'  
+    ctrs   = dsites;            % Centres = dsites here, can be different
+end
+
+
+%Creating the distance matrices
+DMi = DistanceMatrix(dsites,ctrs);   % DISTANCE MATRICES
+DMe = DistanceMatrix(epoints,ctrs);
+
+[IM, EM] = rbfchoose(DMi, DMe, N,s); % Choose a Radially Based Function
+cond(IM);                            % Condition number before QRE
+
+
+%% QRE
+n = input('Do you want EM to be QR Permuted? (y/n)','s');
+
+%Runs pivoted QR algorithm
+if n == 'y'
+[ dsites, IM ] = QRE( epoints, EM, N);
+end
+
+%% (continued)
+
+%Creating the right hand side for the interpolation points and the
+%evaluation points - uncomment the "pert" lines to add perturbation to the
+%data
+%pert = .1*randn(length(dsites),1);
+rhs   = testfunction(dsites,s); %+pert; 
+exact = testfunction(epoints,s);  
+ 
+Pf = EM * (IM\rhs);
+
+%% PLOTS
+
+%Calculates the lebesgue function and constant for plotting
+L = sum(abs(EM/(IM)),2);
+Lconst = max(L);
+
+if s == 1 
+    rbfplot1(dsites, epoints, Pf, exact)
+    
+elseif s == 2
+    
+    if do == 'n'
+        rbfplot2(dsites, Pf, exact)
+    elseif do == 'y'
+        rbfplot2m(gridpoints,epoints,dsites,ctrs,M,Pf,index,exact,xb,yb,L)
+    end
+    
+elseif s == 3
+    rbfplot3(dsites, epoints, Pf, exact,ctrs,M,L,hollow)
+end
+
+%% Maximum Error and Condition Number
+
+
+%Prints the info
+maxerr = norm(Pf-exact(1:length(Pf)),inf);
+fprintf ('Number of Data Points Given: %e\n', N)
+fprintf ('Maximum error: %e\n', maxerr)
+fprintf ('Condition Number: %e\n', cond(IM))
+fprintf('Lebesgue Constant: %e\n', Lconst)
+
+ 

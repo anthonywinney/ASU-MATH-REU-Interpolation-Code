@@ -1,0 +1,168 @@
+%% Sigma Analysis
+% REU 2019
+%% GIVENS
+
+function bestsigma = optimalSigma(n,k,s,evalNum)
+
+startC = 1;
+endC = 7;
+numC = 100;
+errors = zeros(numC,1);
+
+C = linspace(startC,endC,numC);
+
+%s = 1;                        % Num of Dimensions 
+%k = 5;                        % Const for 'GIVEN' data sites calculation 
+%evalNum = 10000;               % Num of eval points on each axis (dimension)
+
+N = (2^k + 1)^s;                             % Number of data sites given
+M = evalNum^s;                               % Number of eval. pts in total
+
+dsites = MakeSDGrid(s,N^(1/s));                   % GIVEN data points using 'points'  
+ctrs   = dsites;                      % Centres = dsites here, can be diff
+
+epoints = MakeSDGrid(s,evalNum);        % Equally spaced evaluation points
+
+% out = epoints(:,1).^2 + epoints(:,2).^2 > 1;
+% epoints(out) = [];
+
+DMi = DistanceMatrix(dsites,ctrs);      % Dist. matrix for IM
+DMe = DistanceMatrix(epoints,ctrs);     % Dist. matrix for EM
+
+%[IM, EM] = rbfchoose(DMi, DMe, N,s) ;     % IM and EM after choosing an RBF
+
+switch n
+    case 1
+        fprintf(['Optimal C: ' num2str(0) '\n'])
+        bestsigma = 0;
+    case 2
+        fprintf(['Optimal C: ' num2str(0) '\n'])
+        bestsigma = 0;
+    case 3
+        
+        %% Iterating through the sigmas
+        
+        for i = 1:numC
+        
+        sigma = C(i)/N^(1/s);
+        IM = exp(-DMi.^2/(2*sigma^2));
+        EM = exp(-DMe.^2/(2*sigma^2));
+                
+        rhs   = testfunction(dsites);
+        exact = testfunction(epoints);
+        
+        Pf = EM * (IM\rhs);
+        
+        allErrors = abs(exact-Pf);
+        
+        errors(i) = max(allErrors);
+        
+        end
+        
+        [MinError, Index] = min(errors);
+        optimalC = C(Index);
+        fprintf(['Optimal C: ' num2str(optimalC) '\n'])
+        bestsigma = optimalC/N^(1/s);
+        
+    case 4
+        
+        %% Iterating through the sigmas
+        
+        for i = 1:numC
+        
+        sigma = C(i)/N^(1/s);
+        IM = sqrt(1+(DMi.^2/(sigma)^2));
+        EM = sqrt(1+(DMe.^2/(sigma)^2));
+                
+        rhs   = testfunction(dsites);
+        exact = testfunction(epoints);
+        
+        Pf = EM * (IM\rhs);
+        
+        allErrors = abs(exact-Pf);
+        
+        errors(i) = max(allErrors);
+        
+        end
+        
+        [MinError, Index] = min(errors);
+        optimalC = C(Index);
+        fprintf(['Optimal C: ' num2str(optimalC) '\n'])
+        bestsigma = optimalC/N^(1/s);
+        
+    case 5
+        fprintf(['Optimal C: ' num2str(0) '\n'])
+        bestsigma = 0;
+    case 6
+        fprintf(['Optimal C: ' num2str(0) '\n'])
+        bestsigma = 0;
+        
+end
+
+figure(1)
+scatter(alpha,yerror)
+
+
+title([rbfFxn ': BestAlpha = ' num2str(BestAlpha) ' MinError = ' num2str(MinError)])
+xlabel('Alphas');
+ylabel('Error');
+
+%{
+
+%% QRE STUFF
+n = input('Do you want EM to be QR Permuted? (y/n)','s');
+if n == 'y'
+A = orth(EM);
+[~,~,E] = qr(A','vector');
+dsites = epoints(E(1:N),:);
+IM = EM(E(1:N),:);
+end
+%% (Continued)
+if s == 1
+    rhs   = testfunction(dsites);         % The GIVEN f(x,y,z,....) of data set 
+    exact = testfunction(epoints);        % Exact solution
+
+elseif s == 2
+    rhs   = testfunction2(dsites);         % The GIVEN f(x,y,z,....) of data set 
+    exact = testfunction2(epoints)';        % Exact solution
+end
+Pf = EM * (IM\rhs);                     % f(x,y,z,...) at evaluation points
+
+
+%% Maximum Error and Condition Number
+
+maxerr = norm(Pf-exact(1:length(Pf)),inf);
+fprintf ('Number of Data Points Given: %e\n', N)
+fprintf ('Maximum error: %e\n', maxerr)
+fprintf ('Condition Number: %e\n', cond(IM))
+
+%% PLOTS
+
+if s == 1 
+% Approximated Plot vs. Exact Plot
+figure(1);
+plot(epoints, Pf, epoints, exact);
+% Error Plot
+figure(2); 
+plot(epoints, abs(Pf-exact));
+% QRE Points
+figure(3);
+plot(dsites,0*dsites,'.')
+
+elseif s == 2
+[xx,yy] = ndgrid(linspace(0,1,evalNum));    
+
+figure(1);
+surf(xx,yy,reshape(Pf,size(xx)))
+figure(2); 
+surf(xx,yy,reshape(exact,size(xx)));
+figure (3) ;
+surf(xx,yy,abs(reshape(exact,size(xx))-reshape(Pf,size(xx))));
+
+figure(5);
+plot(dsites(:,1),dsites(:,2),'ro','markerfacecolor',[1 0 0]);
+
+axis square;
+
+%}
+end
